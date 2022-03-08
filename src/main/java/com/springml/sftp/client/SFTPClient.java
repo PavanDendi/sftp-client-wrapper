@@ -38,25 +38,24 @@ public class SFTPClient {
     }
 
     public SFTPClient(String identity, String passPhrase, String username,
-                      String password, String host, int port) {
+            String password, String host, int port) {
         this(identity, passPhrase, username, password, host, port, false, null);
     }
 
     public SFTPClient(String identity, String passPhrase, String username, String password,
-                      String host, boolean runCrypto, String secretKey) {
+            String host, boolean runCrypto, String secretKey) {
         this(identity, passPhrase, username, password, host, 22, runCrypto, secretKey);
     }
 
     public SFTPClient(String identity, String passPhrase, String username,
-                      String password, String host, int port,
-                      boolean runCrypto, String secretKey) {
+            String password, String host, int port,
+            boolean runCrypto, String secretKey) {
         this(identity, passPhrase, username, password, host, port, runCrypto, secretKey, "AES");
     }
 
-
     public SFTPClient(String identity, String passPhrase, String username, String password,
-                      String host, int port, boolean runCrypto,
-                      String secretKey, String algorithm) {
+            String host, int port, boolean runCrypto,
+            String secretKey, String algorithm) {
         this.identity = identity;
         this.username = username;
         this.password = password;
@@ -67,6 +66,37 @@ public class SFTPClient {
         if (runCrypto) {
             this.cryptoUtils = new CryptoUtils(secretKey, algorithm);
         }
+    }
+
+    private ChannelSftp createSFTPChannel() throws Exception {
+        JSch jsch = new JSch();
+        boolean useIdentity = identity != null && !identity.isEmpty();
+        if (useIdentity) {
+            if (passPhrase != null) {
+                jsch.addIdentity(identity, passPhrase);
+            } else {
+                jsch.addIdentity(identity);
+            }
+        }
+
+        // configure to attempt zlib compression first, fallback to no compression if
+        // unsuccessful
+        java.util.Properties config = new java.util.Properties();
+        config.put("compression.s2c", "zlib,none");
+        config.put("compression.c2s", "zlib,none");
+        config.put(STR_STRICT_HOST_KEY_CHECKING, STR_NO);
+
+        Session session = jsch.getSession(username, host, port);
+        if (!useIdentity) {
+            session.setPassword(password);
+        }
+        session.setConfig(config);
+        session.connect();
+
+        Channel channel = session.openChannel(STR_SFTP);
+        channel.connect();
+
+        return (ChannelSftp) channel;
     }
 
     public String copy(String source, String target) throws Exception {
@@ -254,30 +284,6 @@ public class SFTPClient {
 
             FileUtils.deleteQuietly(tempFile);
         }
-    }
-
-    private ChannelSftp createSFTPChannel() throws Exception {
-        JSch jsch = new JSch();
-        boolean useIdentity = identity != null && !identity.isEmpty();
-        if (useIdentity) {
-            if (passPhrase != null) {
-                jsch.addIdentity(identity, passPhrase);
-            } else {
-                jsch.addIdentity(identity);
-            }
-        }
-
-        Session session = jsch.getSession(username, host, port);
-        session.setConfig(STR_STRICT_HOST_KEY_CHECKING, STR_NO);
-        if (!useIdentity) {
-            session.setPassword(password);
-        }
-        session.connect();
-
-        Channel channel = session.openChannel(STR_SFTP);
-        channel.connect();
-
-        return (ChannelSftp) channel;
     }
 
     private void releaseConnection(ChannelSftp sftpChannel) throws Exception {
