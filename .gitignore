@@ -4,3 +4,4 @@ target/
 .settings/
 .idea/
 sftp.client.iml
+.vscode/
