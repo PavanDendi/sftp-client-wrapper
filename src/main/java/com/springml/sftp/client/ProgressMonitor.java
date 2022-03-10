@@ -1,6 +1,6 @@
 package com.springml.sftp.client;
 
-import com.jcraft.jsch.SftpProgressMonitor;
+import com.pdendi.jsch.SftpProgressMonitor;
 
 import java.util.logging.Logger;
 

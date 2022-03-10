@@ -1,20 +1,43 @@
 package com.springml.sftp.client;
 
-import com.jcraft.jsch.Channel;
-import com.jcraft.jsch.ChannelSftp;
-import com.jcraft.jsch.ChannelSftp.LsEntry;
-import com.jcraft.jsch.JSch;
-import com.jcraft.jsch.Session;
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.FilenameUtils;
-
 import java.io.File;
 import java.util.Collection;
 import java.util.Vector;
-import java.util.logging.Logger;
+// import java.util.logging.Logger;
+
+import com.pdendi.jsch.Channel;
+import com.pdendi.jsch.ChannelSftp;
+import com.pdendi.jsch.ChannelSftp.LsEntry;
+import com.pdendi.jsch.JSch;
+import com.pdendi.jsch.Session;
+// import com.pdendi.jsch.Slf4jLogger;
+import com.pdendi.jsch.Logger;
+
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.FilenameUtils;
+
+
 
 public class SFTPClient {
-    private static final Logger LOG = Logger.getLogger(SFTPClient.class.getName());
+    public static class MyLogger implements com.pdendi.jsch.Logger {
+        static java.util.Hashtable<Integer, String> name=new java.util.Hashtable<Integer, String>();
+        static{
+          name.put(Integer.valueOf(DEBUG), "DEBUG: ");
+          name.put(Integer.valueOf(INFO), "INFO: ");
+          name.put(Integer.valueOf(WARN), "WARN: ");
+          name.put(Integer.valueOf(ERROR), "ERROR: ");
+          name.put(Integer.valueOf(FATAL), "FATAL: ");
+        }
+        public boolean isEnabled(int level){
+          return true;
+        }
+        public void log(int level, String message){
+          System.err.print(name.get(Integer.valueOf(level)));
+          System.err.println(message);
+        }
+      }
+
+    private static final MyLogger LOG = new MyLogger();
 
     private static final String STR_STRICT_HOST_KEY_CHECKING = "StrictHostKeyChecking";
     private static final String STR_SFTP = "sftp";
@@ -69,6 +92,7 @@ public class SFTPClient {
     }
 
     private ChannelSftp createSFTPChannel() throws Exception {
+        JSch.setLogger(LOG);
         JSch jsch = new JSch();
         boolean useIdentity = identity != null && !identity.isEmpty();
         if (useIdentity) {
@@ -82,8 +106,10 @@ public class SFTPClient {
         // configure to attempt zlib compression first, fallback to no compression if
         // unsuccessful
         java.util.Properties config = new java.util.Properties();
-        config.put("compression.s2c", "zlib,none");
-        config.put("compression.c2s", "zlib,none");
+        config.put("zlib@openssh.com", "com.pdendi.jsch.juz.Compression");
+        config.put("zlib", "com.pdendi.jsch.juz.Compression");
+        config.put("compression.s2c", "zlib@openssh.com,zlib,none");
+        config.put("compression.c2s", "zlib@openssh.com,zlib,none");
         config.put(STR_STRICT_HOST_KEY_CHECKING, STR_NO);
 
         Session session = jsch.getSession(username, host, port);
@@ -103,7 +129,7 @@ public class SFTPClient {
         ChannelSftp sftpChannel = createSFTPChannel();
         copyInternal(sftpChannel, source, target);
         releaseConnection(sftpChannel);
-        LOG.info("Copied files successfully...");
+        LOG.log(Logger.INFO, "Copied files successfully...");
 
         return target;
     }
@@ -113,7 +139,7 @@ public class SFTPClient {
         String latestSource = getLatestSource(sftpChannel, source);
         copyInternal(sftpChannel, latestSource, target);
         releaseConnection(sftpChannel);
-        LOG.info("Copied files successfully...");
+        LOG.log(Logger.INFO, "Copied files successfully...");
 
         return getCopiedFilePath(latestSource, target);
     }
@@ -123,7 +149,7 @@ public class SFTPClient {
         String latestSource = getLatestLocalSource(source);
         copyInternalToFTP(sftpChannel, latestSource, target);
         releaseConnection(sftpChannel);
-        LOG.info("Copied files successfully...");
+        LOG.log(Logger.INFO, "Copied files successfully...");
 
         return getCopiedFilePath(latestSource, target);
     }
@@ -132,7 +158,7 @@ public class SFTPClient {
         ChannelSftp sftpChannel = createSFTPChannel();
         copyInternalToFTP(sftpChannel, source, target);
         releaseConnection(sftpChannel);
-        LOG.info("Copied files successfully...");
+        LOG.log(Logger.INFO, "Copied files successfully...");
 
         return target;
     }
@@ -150,7 +176,7 @@ public class SFTPClient {
             basePath = "/" + basePath;
         }
 
-        LOG.fine("Base Path : " + basePath);
+        LOG.log(Logger.INFO, "Base Path : " + basePath);
         int latestModTime = 0;
         String fileName = FilenameUtils.getBaseName(source);
         for (int i = 0, size = ls.size(); i < size; i++) {
@@ -175,7 +201,7 @@ public class SFTPClient {
         File baseDir = new File(basePath);
         File[] filteredFiles = baseDir.listFiles(new FileNameFilter(fileName));
 
-        LOG.fine("Base Path : " + basePath);
+        LOG.log(Logger.INFO, "Base Path : " + basePath);
         long latestModTime = 0;
         for (int i = 0; i < filteredFiles.length; i++) {
             long modTime = filteredFiles[i].lastModified();
@@ -189,7 +215,7 @@ public class SFTPClient {
     }
 
     private void copyInternal(ChannelSftp sftpChannel, String source, String target) throws Exception {
-        LOG.info("Copying file from " + source + " to " + target);
+        LOG.log(Logger.INFO, "Copying file from " + source + " to " + target);
         try {
             sftpChannel.cd(source);
             copyDir(sftpChannel, source, target);
@@ -201,7 +227,7 @@ public class SFTPClient {
     }
 
     private void copyDir(ChannelSftp sftpChannel, String source, String target) throws Exception {
-        LOG.info("Copying files from " + source + " to " + target);
+        LOG.log(Logger.INFO, "Copying files from " + source + " to " + target);
 
         sftpChannel.cd(source);
         sftpChannel.lcd(target);
@@ -209,13 +235,13 @@ public class SFTPClient {
         Vector<ChannelSftp.LsEntry> childFiles = sftpChannel.ls(".");
         for (LsEntry lsEntry : childFiles) {
             String entryName = lsEntry.getFilename();
-            LOG.fine("File Entry " + entryName);
+            LOG.log(Logger.INFO, "File Entry " + entryName);
 
             if (!entryName.equals(".") && !entryName.equals("..")) {
                 if (lsEntry.getAttrs().isDir()) {
                     copyInternal(sftpChannel, source + entryName + "/", target);
                 } else {
-                    LOG.info("Copying file " + entryName);
+                    LOG.log(Logger.INFO, "Copying file " + entryName);
                     sftpChannel.get(entryName, entryName, new ProgressMonitor());
                     decrypt(target + File.separator + entryName);
                 }
@@ -225,7 +251,7 @@ public class SFTPClient {
 
     private void decrypt(String fileLocation) throws Exception {
         if (runCrypto) {
-            LOG.info("Decrypting " + fileLocation);
+            LOG.log(Logger.INFO, "Decrypting " + fileLocation);
             String tempFileLocation = fileLocation + ".temp";
             File tempFile = new File(tempFileLocation);
             File actualFile = new File(fileLocation);
@@ -238,7 +264,7 @@ public class SFTPClient {
     }
 
     private void copyInternalToFTP(ChannelSftp sftpChannel, String source, String target) throws Exception {
-        LOG.info("Copying files from " + source + " to " + target);
+        LOG.log(Logger.INFO, "Copying files from " + source + " to " + target);
         try {
             sftpChannel.lcd(source);
             copyDirToFTP(sftpChannel, source, target);
@@ -250,7 +276,7 @@ public class SFTPClient {
     }
 
     private void copyDirToFTP(ChannelSftp sftpChannel, String source, String target) throws Exception {
-        LOG.info("Copying files from " + source + " to " + target);
+        LOG.log(Logger.INFO, "Copying files from " + source + " to " + target);
 
         sftpChannel.lcd(source);
         sftpChannel.cd(target);
@@ -258,13 +284,13 @@ public class SFTPClient {
         Collection<File> childFiles = FileUtils.listFiles(new File(source), null, false);
         for (File file : childFiles) {
             String entryName = file.getName();
-            LOG.fine("File Entry " + entryName);
+            LOG.log(Logger.INFO, "File Entry " + entryName);
 
             if (!entryName.equals(".") && !entryName.equals("..")) {
                 if (file.isDirectory()) {
                     copyInternalToFTP(sftpChannel, source + entryName + "/", target);
                 } else {
-                    LOG.info("Copying file " + entryName);
+                    LOG.log(Logger.INFO, "Copying file " + entryName);
                     encrypt(source + File.separator + entryName);
                     sftpChannel.put(entryName, entryName, new ProgressMonitor());
                 }
@@ -274,7 +300,7 @@ public class SFTPClient {
 
     private void encrypt(String fileLocation) throws Exception {
         if (runCrypto) {
-            LOG.info("Encrypting " + fileLocation);
+            LOG.log(Logger.INFO, "Encrypting " + fileLocation);
             String tempFileLocation = fileLocation + ".temp";
             File tempFile = new File(tempFileLocation);
             File actualFile = new File(fileLocation);
